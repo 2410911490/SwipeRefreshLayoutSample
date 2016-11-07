@@ -12,20 +12,20 @@
         android:layout_height="match_parent"
         android:background="@android:color/holo_purple">
 
-        <!--<android.support.v7.widget.RecyclerView-->
-        <!--android:id="@+id/recycler"-->
-        <!--android:layout_width="match_parent"-->
-        <!--android:background="@android:color/white"-->
-        <!--android:layout_height="match_parent">-->
+        <android.support.v7.widget.RecyclerView
+        android:id="@+id/recycler"
+        android:layout_width="match_parent"
+        android:background="@android:color/white"
+        android:layout_height="match_parent">
 
-        <!--</android.support.v7.widget.RecyclerView>-->
+        </android.support.v7.widget.RecyclerView>
 
-        <RelativeLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@android:color/white">
+        <!--<RelativeLayout-->
+            <!--android:layout_width="match_parent"-->
+            <!--android:layout_height="match_parent"-->
+            <!--android:background="@android:color/white">-->
 
-        </RelativeLayout>
+        <!--</RelativeLayout>-->
 
 
     </com.xyin.library.RefreshLayout>

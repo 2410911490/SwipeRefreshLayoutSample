@@ -11,6 +11,7 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.widget.AbsListView;
+import android.widget.Scroller;
 
 /**
  * Created by xyin on 2016/11/7.
@@ -26,7 +27,9 @@ public class RefreshLayout extends ViewGroup {
     private View mTarget; // 主布局
     private AnimationView headView; //头部动画布局
 
-    private int mActivePointerId = INVALID_POINTER; //触控点id
+    //按下时给手机给手指分配的id,在全部手指你开屏幕前是不会变化
+    //而pointerIndex睡着手指增减可能会变化,该值是屏幕当前余下的手指按照按下的顺序排序后的索引(即现在屏幕上的第几个)
+    private int mActivePointerId = INVALID_POINTER;
     private float mInitialDownY;    //记录down时的y坐标
     private int mTouchSlop; //触发拖动的一个阈值,并有过滤作用
     private float mInitialMotionY;  //触发事件时的y坐标mInitialMotionY = mInitialDownY + mTouchSlop
@@ -46,7 +49,8 @@ public class RefreshLayout extends ViewGroup {
     public RefreshLayout(Context context, AttributeSet attrs) {
         super(context, attrs);
 
-        mTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
+        mTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();   //获取系统认定的最小滑动距离
+
         setWillNotDraw(false);  //使能重绘
 
         ViewCompat.setChildrenDrawingOrderEnabled(this, true);  //按顺序重绘
@@ -152,7 +156,7 @@ public class RefreshLayout extends ViewGroup {
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
         final int action = MotionEventCompat.getActionMasked(ev);
-        int pointerIndex;
+        int pointerIndex;   //当前屏幕上剩余的手指按照按下先后顺序的index
 
         if (mReturningToStart && action == MotionEvent.ACTION_DOWN) {
             mReturningToStart = false;
@@ -166,12 +170,12 @@ public class RefreshLayout extends ViewGroup {
 
         switch (action) {
             case MotionEvent.ACTION_DOWN:
-                mActivePointerId = ev.getPointerId(0);
+                mActivePointerId = ev.getPointerId(0);  //获取当前序列中第一个手指的id
                 mIsBeingDragged = false;
                 break;
 
             case MotionEvent.ACTION_MOVE: {
-                pointerIndex = ev.findPointerIndex(mActivePointerId);
+                pointerIndex = ev.findPointerIndex(mActivePointerId);   //通过手指id获取当前在的索引
                 if (pointerIndex < 0) {
                     Log.e(LOG_TAG, "Got ACTION_MOVE event but have an invalid active pointer id.");
                     return false;
@@ -182,31 +186,27 @@ public class RefreshLayout extends ViewGroup {
 
                 if (mIsBeingDragged) {
                     final float overscrollTop = (y - mInitialMotionY) * DRAG_RATE;
-                    if (overscrollTop > 0) {
-                        startMove(overscrollTop);
-                    } else {
-                        return false;
-                    }
+                    moveSpinner(overscrollTop);
                 }
                 break;
             }
-            case MotionEventCompat.ACTION_POINTER_DOWN: {
-                pointerIndex = MotionEventCompat.getActionIndex(ev);
-                if (pointerIndex < 0) {
-                    Log.e(LOG_TAG,
-                            "Got ACTION_POINTER_DOWN event but have an invalid action index.");
-                    return false;
-                }
-                mActivePointerId = ev.getPointerId(pointerIndex);
-                break;
-            }
+//            case MotionEventCompat.ACTION_POINTER_DOWN: {
+//                pointerIndex = MotionEventCompat.getActionIndex(ev);    //返回该事件手指index
+//                Log.e(LOG_TAG, "pointerIndex = " + pointerIndex);
+//                if (pointerIndex < 0) {    //不支持多点触控,所以抛弃多点触控
+//                    Log.e(LOG_TAG,
+//                            "Got ACTION_POINTER_DOWN event but have an invalid action index.");
+//                    return false;
+//                }
+////                mActivePointerId = ev.getPointerId(pointerIndex);
+//                break;
+//            }
 
-            case MotionEventCompat.ACTION_POINTER_UP:
+            case MotionEventCompat.ACTION_POINTER_UP:   //当有多的手指抬起时
                 onSecondaryPointerUp(ev);
                 break;
 
             case MotionEvent.ACTION_UP: {
-                mTarget.setTranslationY(0);
                 pointerIndex = ev.findPointerIndex(mActivePointerId);
                 if (pointerIndex < 0) {
                     Log.e(LOG_TAG, "Got ACTION_UP event but don't have an active pointer id.");
@@ -214,10 +214,8 @@ public class RefreshLayout extends ViewGroup {
                 }
 
                 if (mIsBeingDragged) {
-                    final float y = ev.getY(pointerIndex);
-                    final float overscrollTop = (y - mInitialMotionY) * DRAG_RATE;
                     mIsBeingDragged = false;
-                    finishMove(overscrollTop);
+                    finishSpinner();
                 }
                 mActivePointerId = INVALID_POINTER;
                 return false;
@@ -229,13 +227,14 @@ public class RefreshLayout extends ViewGroup {
         return true;
     }
 
-    private void startMove(float overscrollTop) {
+    private void moveSpinner(float overscrollTop) {
         //TODO
         mTarget.setTranslationY(overscrollTop);
     }
 
-    private void finishMove(float overscrollTop) {
+    private void finishSpinner() {
         //TODO
+        mTarget.setTranslationY(0);
     }
 
     /**
@@ -256,7 +255,8 @@ public class RefreshLayout extends ViewGroup {
     }
 
     /**
-     * 设置拖拽参数
+     * 设置拖拽的一些参数
+     *
      * @param y 当前y坐标
      */
     private void startDragging(float y) {
@@ -270,21 +270,23 @@ public class RefreshLayout extends ViewGroup {
 
     /**
      * 更新新的触点id
+     *
      * @param ev MotionEvent
      */
     private void onSecondaryPointerUp(MotionEvent ev) {
-        final int pointerIndex = MotionEventCompat.getActionIndex(ev);  //通过事件获取事件的index
-        final int pointerId = ev.getPointerId(pointerIndex); //通过事件id获取触控点id
-        if (pointerId == mActivePointerId) {
+        final int pointerIndex = MotionEventCompat.getActionIndex(ev);  //获取手指index
+        final int pointerId = ev.getPointerId(pointerIndex); //通过index获取手指id
+        if (pointerId == mActivePointerId) {    //如果是记录下手指抬起了,则跟新为记录的手指id
             // This was our active pointer going up. Choose a new
             // active pointer and adjust accordingly.
-            final int newPointerIndex = pointerIndex == 0 ? 1 : 0;
+            final int newPointerIndex = pointerIndex == 0 ? 1 : 0;  //如果是第一个触控点抬起,就更新成第二个有效,否则不变
             mActivePointerId = ev.getPointerId(newPointerIndex);    //更新成最新的触点id
         }
     }
 
     /**
      * 判断mTarget是否可以上滑操作
+     *
      * @return Whether it is possible for the child view of this layout to
      * scroll up. Override this if the child view is a custom view.
      */
@@ -307,10 +309,10 @@ public class RefreshLayout extends ViewGroup {
         }
     }
 
-
     /**
      * Set a callback to override {@link RefreshLayout#canChildScrollUp()} method. Non-null
      * callback will return the value provided by the callback and ignore all internal logic.
+     *
      * @param callback Callback that should be called when canChildScrollUp() is called.
      */
     public void setOnChildScrollUpCallback(@Nullable OnChildScrollUpCallback callback) {

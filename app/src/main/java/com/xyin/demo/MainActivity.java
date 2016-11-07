@@ -1,7 +1,9 @@
 package com.xyin.demo;
 
+import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.view.View;
 
@@ -11,6 +13,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     RefreshLayout refreshLayout;
     RecyclerView recycler;
+//    SwipeRefreshLayout
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -30,10 +33,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 //            }
 //        });
 //
-//        recycler = (RecyclerView) findViewById(R.id.recycler);
-//        LinearLayoutManager manager = new LinearLayoutManager(this);
-//        recycler.setLayoutManager(manager);
-//        recycler.setAdapter(new MyAdapter());
+        recycler = (RecyclerView) findViewById(R.id.recycler);
+        LinearLayoutManager manager = new LinearLayoutManager(this);
+        recycler.setLayoutManager(manager);
+        recycler.setAdapter(new MyAdapter());
     }
 
     @Override
