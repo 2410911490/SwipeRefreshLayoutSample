@@ -250,7 +250,7 @@ public class CustomSwipeRefreshLayout extends ViewGroup implements NestedScrolli
         }
 
         /**
-         * Simple constructor to use when creating a SwipeRefreshLayout from code.
+         * Simple constructor to use when creating a RefreshLayout from code.
          *
          * @param context
          */
@@ -259,7 +259,7 @@ public class CustomSwipeRefreshLayout extends ViewGroup implements NestedScrolli
         }
 
         /**
-         * Constructor that is called when inflating SwipeRefreshLayout from XML.
+         * Constructor that is called when inflating RefreshLayout from XML.
          *
          * @param context
          * @param attrs
