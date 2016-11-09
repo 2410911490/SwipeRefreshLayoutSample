@@ -6,7 +6,7 @@
     android:layout_height="match_parent"
     tools:context="com.xyin.demo.MainActivity">
 
-    <com.xyin.library.RefreshLayout
+    <com.xyin.library.MRefreshLayout
         android:id="@+id/swipe_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -28,7 +28,7 @@
         <!--</RelativeLayout>-->
 
 
-    </com.xyin.library.RefreshLayout>
+    </com.xyin.library.MRefreshLayout>
 
 
 </RelativeLayout>

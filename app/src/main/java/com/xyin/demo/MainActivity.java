@@ -7,11 +7,12 @@ import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.view.View;
 
+import com.xyin.library.MRefreshLayout;
 import com.xyin.library.RefreshLayout;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
-    RefreshLayout refreshLayout;
+//    MRefreshLayout refreshLayout;
     RecyclerView recycler;
 //    SwipeRefreshLayout
 

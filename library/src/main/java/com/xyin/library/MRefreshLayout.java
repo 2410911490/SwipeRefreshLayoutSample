@@ -2,14 +2,19 @@ package com.xyin.library;
 
 import android.content.Context;
 import android.support.v4.view.MotionEventCompat;
+import android.support.v4.view.NestedScrollingChild;
+import android.support.v4.view.NestedScrollingChildHelper;
 import android.support.v4.view.NestedScrollingParent;
 import android.support.v4.view.NestedScrollingParentHelper;
 import android.support.v4.view.ViewCompat;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.MotionEvent;
+import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.widget.AbsListView;
 
 /**
@@ -17,13 +22,16 @@ import android.widget.AbsListView;
  * 刷新控件
  */
 
-public class MRefreshLayout extends ViewGroup implements NestedScrollingParent {
+public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, NestedScrollingChild {
 
     private static final String LOG_TAG = MRefreshLayout.class.getSimpleName();
     private static final int INVALID_POINTER = -1;  //表示无效的触控点
     private static final float DRAG_RATE = .5f;  //定义个拖拽因子,调整该值实现不同的拖拽手感
 
-    private final NestedScrollingParentHelper mNestedScrollingParentHelper;
+    private NestedScrollingParentHelper mNestedScrollingParentHelper;
+    private NestedScrollingChildHelper mNestedScrollingChildHelper;
+    //存储nested parent在屏幕上的偏移量(该偏移量按坐标系计算向下偏移为正),获取到该值后以便于view做调整
+    private final int[] mParentOffsetInWindow = new int[2];
 
     private View mTarget; // 主布局
     private AnimationView headView; //头部动画布局
@@ -32,6 +40,8 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent {
     //而pointerIndex睡着手指增减可能会变化,该值是屏幕当前余下的手指按照按下的顺序排序后的索引(即现在屏幕上的第几个)
     private int mActivePointerId = INVALID_POINTER;
     private int mTouchSlop; //触发拖动的一个阈值,并有过滤作用
+    private int mCurrentTargetOffsetTop;    //记录mTarget与top的距离
+//    private int maxDragDistance = 100;
 
 
     public MRefreshLayout(Context context) {
@@ -41,6 +51,9 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent {
     public MRefreshLayout(Context context, AttributeSet attrs) {
         super(context, attrs);
 
+        Log.e(LOG_TAG, "MRefreshLayout");
+
+
         mTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();   //获取系统认定的最小滑动距离
 
         setWillNotDraw(false);  //使能重绘
@@ -48,10 +61,12 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent {
         ViewCompat.setChildrenDrawingOrderEnabled(this, true);  //按顺序重绘
 
         mNestedScrollingParentHelper = new NestedScrollingParentHelper(this);
+        mNestedScrollingChildHelper = new NestedScrollingChildHelper(this);
     }
 
     @Override
     protected void onLayout(boolean b, int i, int i1, int i2, int i3) {
+        Log.e(LOG_TAG, "onLayout");
         final int width = getMeasuredWidth();
         final int height = getMeasuredHeight();
         if (getChildCount() == 0) {
@@ -66,7 +81,7 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent {
 
         final View child = mTarget;
         final int childLeft = getPaddingLeft();
-        final int childTop = getPaddingTop();
+        final int childTop = getPaddingTop() + mCurrentTargetOffsetTop; //当页面重绘时恢复位置
         final int childWidth = width - getPaddingLeft() - getPaddingRight();
         final int childHeight = height - getPaddingTop() - getPaddingBottom();
         child.layout(childLeft, childTop, childLeft + childWidth, childTop + childHeight);
@@ -75,6 +90,7 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent {
 
     @Override
     public void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        Log.e(LOG_TAG, "onMeasure");
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
         if (mTarget == null) {
             ensureTarget();
@@ -82,6 +98,7 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent {
         if (mTarget == null) {
             return;
         }
+
         mTarget.measure(MeasureSpec.makeMeasureSpec(
                 getMeasuredWidth() - getPaddingLeft() - getPaddingRight(),
                 MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(
@@ -89,44 +106,144 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent {
 
     }
 
+    //--------------------------NestedScrollingParent回调接口---------------------
+
     @Override
     public boolean onStartNestedScroll(View child, View target, int nestedScrollAxes) {
-        return false;   //返回值决定是否先于child处理滚动
+        //返回值决定是否先于child处理滚动
+        //使能且竖直方向滑动时介入滑动处理
+        Log.e(LOG_TAG, "onStart");
+        return isEnabled() && (nestedScrollAxes & ViewCompat.SCROLL_AXIS_VERTICAL) != 0;
     }
 
     @Override
     public void onNestedScrollAccepted(View child, View target, int nestedScrollAxes) {
+        Log.e(LOG_TAG, "Accepted");
         //需要先于child做滑动处理时,会调用该方法
-    }
+        mNestedScrollingParentHelper.onNestedScrollAccepted(child, target, nestedScrollAxes);
+        //传递给该类的NestedScrollingParent
+        startNestedScroll(nestedScrollAxes & ViewCompat.SCROLL_AXIS_VERTICAL);
 
-    @Override
-    public void onStopNestedScroll(View target) {
-        //滑动停止时回调
-    }
-
-    @Override
-    public void onNestedScroll(View target, int dxConsumed, int dyConsumed, int dxUnconsumed, int dyUnconsumed) {
-        //child将剩余未处理的距离传递给到这,实现child滑动完成后处理
+        mCurrentTargetOffsetTop = mTarget.getTop(); //更新与顶部的距离
     }
 
     @Override
     public void onNestedPreScroll(View target, int dx, int dy, int[] consumed) {
         //child将要滑动时,将需要滑动的距离传递到这,实现先于child滑动前处理
+        //向下滑动时dy为负,反之为正
+        Log.e(LOG_TAG, "pre dy = " + dy);
+
+        //处理向上滑动
+        if (dy > 0 && mCurrentTargetOffsetTop > 0) {
+            int offset = Math.min(dy, mCurrentTargetOffsetTop);
+            int d = (int) (offset * DRAG_RATE);
+            mTarget.offsetTopAndBottom(-d);
+            mCurrentTargetOffsetTop -= d;
+            consumed[1] = offset;   //通知nested child 已经消耗的距离
+        }
+
     }
 
     @Override
-    public boolean onNestedFling(View target, float velocityX, float velocityY, boolean consumed) {
-        return false;   //是否处理fling事件
+    public void onNestedScroll(View target, int dxConsumed, int dyConsumed, int dxUnconsumed, int dyUnconsumed) {
+        //child将剩余未处理的距离传递给到这,实现child滑动完成后处理
+        Log.e(LOG_TAG, "on dyConsumed = " + dyConsumed + ", dyUnconsumed = " + dyUnconsumed);
+
+        //首先向上分发给nested parent处理
+        dispatchNestedScroll(dxConsumed, dyConsumed, dxUnconsumed, dyUnconsumed,
+                mParentOffsetInWindow);
+
+        //因为mParentOffsetInWindow向下偏移为正与dyUnconsumed相反所以相加
+        //抵消掉nested parent偏移的部分,得到实际需要偏移的部分
+        int dy = dyUnconsumed + mParentOffsetInWindow[1];
+
+        //处理向下的滑动
+        if (dy < 0 && !canChildScrollUp() ) {
+            int offset = (int) (-dy * DRAG_RATE);
+            mTarget.offsetTopAndBottom(offset);    //向下移动
+            mCurrentTargetOffsetTop -= dy;  //记录mTarget当前与顶部的距离
+        }
+
+
     }
 
     @Override
     public boolean onNestedPreFling(View target, float velocityX, float velocityY) {
-        return true;    //先于child前处理fling事件
+        Log.e(LOG_TAG, "onNestedPreFling");
+        //先于child前处理fling事件,直接分发给NestedScrollingParent处理
+        return dispatchNestedPreFling(velocityX, velocityY);
+    }
+
+    @Override
+    public boolean onNestedFling(View target, float velocityX, float velocityY, boolean consumed) {
+        Log.e(LOG_TAG, "onNestedFling");
+        return dispatchNestedFling(velocityX, velocityY, consumed);
+    }
+
+    @Override
+    public void onStopNestedScroll(View target) {
+        //滑动停止时回调
+        mNestedScrollingParentHelper.onStopNestedScroll(target);
+        Log.e(LOG_TAG, "onStop");
+
+        // Dispatch up our nested parent
+        stopNestedScroll();
     }
 
     @Override
     public int getNestedScrollAxes() {
-        return 1; //获取滚动方向
+        return mNestedScrollingParentHelper.getNestedScrollAxes();
+    }
+
+
+    //-------------------------NestedScrollingChild回调接口------------------------------
+
+    @Override
+    public void setNestedScrollingEnabled(boolean enabled) {
+        mNestedScrollingChildHelper.setNestedScrollingEnabled(enabled);
+    }
+
+    @Override
+    public boolean isNestedScrollingEnabled() {
+        return mNestedScrollingChildHelper.isNestedScrollingEnabled();
+    }
+
+    @Override
+    public boolean startNestedScroll(int axes) {
+        return mNestedScrollingChildHelper.startNestedScroll(axes);
+    }
+
+    @Override
+    public boolean hasNestedScrollingParent() {
+        return mNestedScrollingChildHelper.hasNestedScrollingParent();
+    }
+
+    @Override
+    public boolean dispatchNestedScroll(int dxConsumed, int dyConsumed,
+                                        int dxUnconsumed, int dyUnconsumed, int[] offsetInWindow) {
+        return mNestedScrollingChildHelper.dispatchNestedScroll(dxConsumed, dyConsumed,
+                dxUnconsumed, dyUnconsumed, offsetInWindow);
+    }
+
+    @Override
+    public boolean dispatchNestedPreScroll(int dx, int dy, int[] consumed, int[] offsetInWindow) {
+        return mNestedScrollingChildHelper.dispatchNestedPreScroll(
+                dx, dy, consumed, offsetInWindow);
+    }
+
+    @Override
+    public void stopNestedScroll() {
+        mNestedScrollingChildHelper.stopNestedScroll();
+    }
+
+    @Override
+    public boolean dispatchNestedFling(float velocityX, float velocityY, boolean consumed) {
+        return mNestedScrollingChildHelper.dispatchNestedFling(velocityX, velocityY, consumed);
+    }
+
+    @Override
+    public boolean dispatchNestedPreFling(float velocityX, float velocityY) {
+        return mNestedScrollingChildHelper.dispatchNestedPreFling(velocityX, velocityY);
     }
 
     /**
