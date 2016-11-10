@@ -98,7 +98,7 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
 
     @Override
     protected void onLayout(boolean b, int i, int i1, int i2, int i3) {
-        Log.e(LOG_TAG, "onLayout");
+        Log.e(LOG_TAG, "onLayout=================================");
         final int width = getMeasuredWidth();
         final int height = getMeasuredHeight();
         if (getChildCount() == 0) {
@@ -120,14 +120,16 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
 
         // header放到target的上方，水平居中
         int refreshViewWidth = mHeadView.getMeasuredWidth();
-        mHeadView.layout((width / 2 - refreshViewWidth / 2), -headerHeight+mCurrentTargetOffsetTop+200,
-                (width / 2 + refreshViewWidth / 2), mCurrentTargetOffsetTop+200 );
+        mHeadView.layout((width / 2 - refreshViewWidth / 2), -headerHeight + mCurrentTargetOffsetTop,
+                (width / 2 + refreshViewWidth / 2), mCurrentTargetOffsetTop);
+
+        Log.e(LOG_TAG, "headerTop = " + mHeadView.getTop());
 
     }
 
     @Override
     public void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        Log.e(LOG_TAG, "onMeasure");
+        Log.e(LOG_TAG, "onMeasure ============================ ");
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
         if (mTarget == null) {
             ensureTarget();
@@ -147,10 +149,11 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
         headerHeight = mHeadView.getMeasuredHeight(); // header高度
         totalDragDistance = headerHeight;   // 需要pull这个距离才进入松手刷新状态
         if (maxDragDistance == 0) {  // 默认最大下拉距离为控件高度的五分之四
-            maxDragDistance = totalDragDistance * 3;
+            maxDragDistance = 2 * totalDragDistance;
         }
-//        if (!hasMeasureHeader) { // 防止header重复测量
-//        }
+
+        Log.e(LOG_TAG, "headerHeight = " + headerHeight);
+
 
     }
 
@@ -183,10 +186,12 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
 
         //处理向上滑动
         if (dy > 0 && mCurrentTargetOffsetTop > 0) {
-            mState = DRAGGING;
-            int offset = Math.min(dy, mCurrentTargetOffsetTop);
-            mTarget.offsetTopAndBottom(-offset);
-            mCurrentTargetOffsetTop -= offset;
+//            mState = DRAGGING;
+//            int offset = Math.min(dy, mCurrentTargetOffsetTop);
+//            mTarget.offsetTopAndBottom(-offset);
+//            mHeadView.offsetTopAndBottom(-offset);
+//            mCurrentTargetOffsetTop -= offset;
+            moveSpinner(-dy);
             consumed[1] = dy;   //通知nested child 已经消耗的距离
         }
 
@@ -206,11 +211,18 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
         int dy = dyUnconsumed + mParentOffsetInWindow[1];
 
         //处理向下的滑动
-        if (dy < 0 && !canChildScrollUp()) {
-            int offset = (int) (-dy * DRAG_RATE);
-            mTarget.offsetTopAndBottom(offset);    //向下移动
-            mHeadView.offsetTopAndBottom(offset/2);
-            mCurrentTargetOffsetTop += offset;  //记录mTarget当前与顶部的距离
+        if (dy < 0 && !canChildScrollUp() && mCurrentTargetOffsetTop < maxDragDistance) {
+//            int offset = (int) (-dy * DRAG_RATE);
+//            ViewCompat.offsetTopAndBottom(mTarget, offset);
+//            ViewCompat.offsetTopAndBottom(mHeadView, offset);
+////            mTarget.offsetTopAndBottom(offset);    //向下移动
+////            mHeadView.bringToFront();
+//
+//            if (mCurrentTargetOffsetTop <= 0) {
+//                invalidate();
+//            }
+//            mCurrentTargetOffsetTop += offset;  //记录mTarget当前与顶部的距离
+            moveSpinner(-dy * DRAG_RATE);
         }
 
 
@@ -296,6 +308,41 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
     }
 
     /**
+     * 开始滑动
+     *
+     * @param dy 需要滑动的偏移量,dy>0表示一个向下的手势产生的距离,反之向上手势产生的距离
+     */
+    private void moveSpinner(float dy) {
+        int offset = Math.round(dy);
+        if (offset == 0) {
+            return;
+        }
+
+        if (offset < 0) {
+            offset = Math.max( offset, -mCurrentTargetOffsetTop);  //修正需要上滑的距离,防止mTarget移到上方
+        } else {
+            // 下拉的时候才添加阻力
+            int targetY = mCurrentTargetOffsetTop + offset; //计算出当前需要的总的偏移量并设置
+            // y表示阻力,x表示当前偏移量占可滑动总距离百分比,y = -x^2 + 2x
+            float extraOS = targetY - totalDragDistance;
+            float slingshotDist = totalDragDistance;
+            float tensionSlingshotPercent = Math.max(0, Math.min(extraOS, slingshotDist * 2) / slingshotDist);
+            float tensionPercent = (float) (tensionSlingshotPercent - Math.pow(tensionSlingshotPercent / 2, 2));
+            offset = (int) (offset * (1f - tensionPercent));
+        }
+
+        ViewCompat.offsetTopAndBottom(mTarget, offset);
+        ViewCompat.offsetTopAndBottom(mHeadView, offset);
+
+        if (mCurrentTargetOffsetTop <= 0) {
+            invalidate();   //初始状态head view是隐藏的,需要重绘一次才能显示
+        }
+
+        mCurrentTargetOffsetTop += offset;
+
+    }
+
+    /**
      * 确保有一个mTarget
      */
     private void ensureTarget() {
@@ -309,7 +356,6 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
             }
         }
     }
-
 
     /**
      * 更新新的触点id
