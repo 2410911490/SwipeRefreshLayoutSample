@@ -10,11 +10,9 @@ import android.support.v4.view.ViewCompat;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
-import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
-import android.view.ViewParent;
 import android.widget.AbsListView;
 
 /**
@@ -28,20 +26,30 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
     private static final int INVALID_POINTER = -1;  //表示无效的触控点
     private static final float DRAG_RATE = .5f;  //定义个拖拽因子,调整该值实现不同的拖拽手感
 
+    private static final int NORMAL = 0x01;   //正常状态
+    private static final int DRAGGING = 0x02; //正在拖拽
+    private static final int REFRESHING = 0x03; //刷新中
+    private static final int RETURNING = 0x04; //处于返回顶部状态
+
     private NestedScrollingParentHelper mNestedScrollingParentHelper;
     private NestedScrollingChildHelper mNestedScrollingChildHelper;
     //存储nested parent在屏幕上的偏移量(该偏移量按坐标系计算向下偏移为正),获取到该值后以便于view做调整
     private final int[] mParentOffsetInWindow = new int[2];
 
     private View mTarget; // 主布局
-    private AnimationView headView; //头部动画布局
+    private View mHeadView; //头部view
 
     //按下时给手机给手指分配的id,在全部手指你开屏幕前是不会变化
     //而pointerIndex睡着手指增减可能会变化,该值是屏幕当前余下的手指按照按下的顺序排序后的索引(即现在屏幕上的第几个)
     private int mActivePointerId = INVALID_POINTER;
     private int mTouchSlop; //触发拖动的一个阈值,并有过滤作用
     private int mCurrentTargetOffsetTop;    //记录mTarget与top的距离
-//    private int maxDragDistance = 100;
+    private int mState; //当前RefreshLayout状态
+    private int headerHeight;
+
+    private boolean hasMeasureHeader;//标记是否测量了header
+    private int totalDragDistance;  //能触发刷新的距离,默认为header高度
+    private int maxDragDistance; //最大拖动距离
 
 
     public MRefreshLayout(Context context) {
@@ -62,7 +70,31 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
 
         mNestedScrollingParentHelper = new NestedScrollingParentHelper(this);
         mNestedScrollingChildHelper = new NestedScrollingChildHelper(this);
+
+        mState = NORMAL;  //正常状态
+
+        setRefreshHeader(new MyHeaderView(context));
+
     }
+
+    /**
+     * 为layout添加一个下拉头部
+     *
+     * @param view head view
+     */
+    public void setRefreshHeader(View view) {
+        if (view != null && view != mHeadView) {
+            removeView(mHeadView);
+            ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
+            if (layoutParams == null) { // 为header添加默认的layoutParams
+                layoutParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+                view.setLayoutParams(layoutParams);
+            }
+            mHeadView = view;
+            addView(mHeadView);
+        }
+    }
+
 
     @Override
     protected void onLayout(boolean b, int i, int i1, int i2, int i3) {
@@ -86,6 +118,11 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
         final int childHeight = height - getPaddingTop() - getPaddingBottom();
         child.layout(childLeft, childTop, childLeft + childWidth, childTop + childHeight);
 
+        // header放到target的上方，水平居中
+        int refreshViewWidth = mHeadView.getMeasuredWidth();
+        mHeadView.layout((width / 2 - refreshViewWidth / 2), -headerHeight+mCurrentTargetOffsetTop+200,
+                (width / 2 + refreshViewWidth / 2), mCurrentTargetOffsetTop+200 );
+
     }
 
     @Override
@@ -103,6 +140,17 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
                 getMeasuredWidth() - getPaddingLeft() - getPaddingRight(),
                 MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(
                 getMeasuredHeight() - getPaddingTop() - getPaddingBottom(), MeasureSpec.EXACTLY));
+
+        // ----- measure refreshView-----
+        measureChild(mHeadView, widthMeasureSpec, heightMeasureSpec);
+        hasMeasureHeader = true;
+        headerHeight = mHeadView.getMeasuredHeight(); // header高度
+        totalDragDistance = headerHeight;   // 需要pull这个距离才进入松手刷新状态
+        if (maxDragDistance == 0) {  // 默认最大下拉距离为控件高度的五分之四
+            maxDragDistance = totalDragDistance * 3;
+        }
+//        if (!hasMeasureHeader) { // 防止header重复测量
+//        }
 
     }
 
@@ -131,15 +179,15 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
     public void onNestedPreScroll(View target, int dx, int dy, int[] consumed) {
         //child将要滑动时,将需要滑动的距离传递到这,实现先于child滑动前处理
         //向下滑动时dy为负,反之为正
-        Log.e(LOG_TAG, "pre dy = " + dy);
+        Log.e(LOG_TAG, "pre dy = " + dy + " ,mCurrentTargetOffsetTop = " + mCurrentTargetOffsetTop);
 
         //处理向上滑动
         if (dy > 0 && mCurrentTargetOffsetTop > 0) {
+            mState = DRAGGING;
             int offset = Math.min(dy, mCurrentTargetOffsetTop);
-            int d = (int) (offset * DRAG_RATE);
-            mTarget.offsetTopAndBottom(-d);
-            mCurrentTargetOffsetTop -= d;
-            consumed[1] = offset;   //通知nested child 已经消耗的距离
+            mTarget.offsetTopAndBottom(-offset);
+            mCurrentTargetOffsetTop -= offset;
+            consumed[1] = dy;   //通知nested child 已经消耗的距离
         }
 
     }
@@ -158,10 +206,11 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
         int dy = dyUnconsumed + mParentOffsetInWindow[1];
 
         //处理向下的滑动
-        if (dy < 0 && !canChildScrollUp() ) {
+        if (dy < 0 && !canChildScrollUp()) {
             int offset = (int) (-dy * DRAG_RATE);
             mTarget.offsetTopAndBottom(offset);    //向下移动
-            mCurrentTargetOffsetTop -= dy;  //记录mTarget当前与顶部的距离
+            mHeadView.offsetTopAndBottom(offset/2);
+            mCurrentTargetOffsetTop += offset;  //记录mTarget当前与顶部的距离
         }
 
 
@@ -253,7 +302,7 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
         if (mTarget == null) {
             for (int i = 0; i < getChildCount(); i++) {
                 View child = getChildAt(i);
-                if (!child.equals(headView)) {
+                if (!child.equals(mHeadView)) {
                     mTarget = child;
                     break;
                 }
