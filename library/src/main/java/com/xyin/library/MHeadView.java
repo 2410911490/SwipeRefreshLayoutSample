@@ -30,7 +30,7 @@ public interface MHeadView {
     void onPositionChange(float currentTop, float offset,int state);
 
     /**
-     * 刷新成功的时候调用
+     * 刷新完成的时候调用
      */
     void complete();
 

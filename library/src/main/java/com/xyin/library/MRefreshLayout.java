@@ -7,6 +7,7 @@ import android.support.v4.view.NestedScrollingChildHelper;
 import android.support.v4.view.NestedScrollingParent;
 import android.support.v4.view.NestedScrollingParentHelper;
 import android.support.v4.view.ViewCompat;
+import android.support.v4.widget.SwipeRefreshLayout;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -55,6 +56,7 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
     private boolean hasMeasureHeader;//标记是否测量了header
     private int totalDragDistance;  //能触发刷新的距离,为header高度
     private int maxDragDistance; //最大拖动距离
+    private OnRefreshListener mListener;
 
 
     public MRefreshLayout(Context context) {
@@ -306,6 +308,8 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
             return;
         }
 
+        //TODO 自动下滑时不加阻力
+
         if (offset < 0) {
             //修正需要上滑的距离,防止mTarget移到上方
             offset = Math.max(offset, -mCurrentTargetOffsetTop);
@@ -330,10 +334,15 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
 
         mCurrentTargetOffsetTop += offset;  //记录
 
-        if (mHeadView instanceof MHeadView) {
+        //只有拖拽时才执行动画
+        if (isHeadView() && mState == DRAGGING) {
             ((MHeadView) mHeadView).onPositionChange(mCurrentTargetOffsetTop, offset, 1);
         }
 
+    }
+
+    private boolean isHeadView() {
+        return mHeadView != null && mHeadView instanceof MHeadView;
     }
 
     /**
@@ -342,7 +351,7 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
     private void handleUp() {
         if (mCurrentTargetOffsetTop == 0) {
             mState = NORMAL;    //设置为正常状态
-        } else if (mCurrentTargetOffsetTop > totalDragDistance) {
+        } else if (mCurrentTargetOffsetTop >= totalDragDistance) {
             mState = RETURN_TO_HEIGHT;  //返回head view 处准备刷新
             autoScroll.scrollTo(totalDragDistance, HEIGHT_DURATION);
         } else if (mCurrentTargetOffsetTop > 0) {
@@ -434,39 +443,49 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
      * @param isForceFinish 是否是强制结束的,true
      */
     private void onScrollFinish(boolean isForceFinish) {
-
         if (isForceFinish) {
             if (mTarget.getTop() == totalDragDistance) {
-                mState = REFRESHING;    //进入刷新状态
                 Log.e(LOG_TAG, "准备刷新");
+                setRefreshing(true);
+                if (mListener != null) {
+                    mListener.onRefresh();
+                }
             } else if (mTarget.getTop() == 0) {
                 mState = NORMAL;    //进入复位状态
+                if (isHeadView()) {
+                    ((MHeadView)mHeadView).reset();
+                }
                 Log.e(LOG_TAG, "进入复位状态");
             }
-
-            changeState(mState);
 
         }
     }
 
+    /**
+     * 设置是否开始刷新动画
+     * @param refreshing 是否需要刷新
+     */
+    public void setRefreshing(boolean refreshing) {
+        if (refreshing && mState != REFRESHING) {
+            mState = REFRESHING;    //进入刷新状态
+            if (isHeadView()) {
+                ((MHeadView)mHeadView).refreshing();
+            }
+        } else if (!refreshing) {
+            //取消刷新动画
+            if (isHeadView()) {
+                ((MHeadView)mHeadView).complete();
+            }
+            reset();
+        }
+    }
 
-    private void changeState(int state) {
-//        if (mHeadView != null && mHeadView instanceof RefreshHeader) {
-//            RefreshHeader refreshHeader = (RefreshHeader) mHeadView;
-//            switch (state) {
-//                case REFRESHING:
-//                    refreshHeader.refreshing();
-//                    break;
-//                case DRAGGING:
-//
-//                    break;
-//                case NORMAL:
-//                    refreshHeader.reset();
-//                    break;
-//                default:
-//                    break;
-//            }
-//        }
+    /**
+     * 复位控件
+     */
+    private void reset() {
+        mState = RETURN_TO_TOP; //返回顶部
+        autoScroll.scrollTo(0, TOP_DURATION);
     }
 
 
@@ -490,6 +509,22 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
         } else {
             return ViewCompat.canScrollVertically(mTarget, -1);
         }
+    }
+
+
+    /**
+     * Set the listener to be notified when a refresh is triggered via the swipe
+     * gesture.
+     */
+    public void setOnRefreshListener(OnRefreshListener listener) {
+        mListener = listener;
+    }
+
+    public interface OnRefreshListener {
+        /**
+         * Called when a swipe gesture triggers a refresh.
+         */
+        void onRefresh();
     }
 
 

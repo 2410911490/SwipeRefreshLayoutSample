@@ -1,5 +1,7 @@
 package com.xyin.demo;
 
+import android.os.Handler;
+import android.os.Message;
 import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -12,7 +14,7 @@ import com.xyin.library.RefreshLayout;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
-//    MRefreshLayout refreshLayout;
+    MRefreshLayout refreshLayout;
     RecyclerView recycler;
 //    SwipeRefreshLayout
 
@@ -21,18 +23,18 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-//        refreshLayout = (TestSwipeRefreshLayout) findViewById(R.id.swipe_container);
-//
+        refreshLayout = (MRefreshLayout) findViewById(R.id.swipe_container);
+
 //        refreshLayout.setProgressViewOffset(false, 0, (int) TypedValue
 //                .applyDimension(TypedValue.COMPLEX_UNIT_DIP, 24, getResources()
 //                        .getDisplayMetrics()));
-//
-//        refreshLayout.setOnRefreshListener(new TestSwipeRefreshLayout.OnRefreshListener() {
-//            @Override
-//            public void onRefresh() {
-//                handler.sendEmptyMessageDelayed(1, 2500);
-//            }
-//        });
+
+        refreshLayout.setOnRefreshListener(new MRefreshLayout.OnRefreshListener() {
+            @Override
+            public void onRefresh() {
+                handler.sendEmptyMessageDelayed(1, 2500);
+            }
+        });
 //
         recycler = (RecyclerView) findViewById(R.id.recycler);
         LinearLayoutManager manager = new LinearLayoutManager(this);
@@ -45,12 +47,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 //        refreshLayout.setRefreshing(false);
     }
 
-//    Handler handler = new Handler(new Handler.Callback() {
-//        @Override
-//        public boolean handleMessage(Message msg) {
-//            refreshLayout.setRefreshing(false);
-//            return true;
-//        }
-//    });
+    Handler handler = new Handler(new Handler.Callback() {
+        @Override
+        public boolean handleMessage(Message msg) {
+            refreshLayout.setRefreshing(false);
+            return true;
+        }
+    });
 
 }
