@@ -45,7 +45,7 @@ public class MyHeaderView extends FrameLayout implements MHeadView{
 
     @Override
     public void reset() {
-        Log.e("MRefreshLayout", "reset()");
+        Log.e("MRefreshLayout", "MyHeaderView reset()");
     }
 
     @Override
@@ -60,7 +60,7 @@ public class MyHeaderView extends FrameLayout implements MHeadView{
 
     @Override
     public void onPositionChange(float currentTop, float offset, int state) {
-        Log.e("MRefreshLayout", "onPositionChange(), currentTop = " + currentTop + ", offset = " + offset + ",state = " + state);
+//        Log.e("MRefreshLayout", "onPositionChange(), currentTop = " + currentTop + ", offset = " + offset + ",state = " + state);
     }
 
     @Override

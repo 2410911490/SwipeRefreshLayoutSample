@@ -190,8 +190,7 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
         //child将要滑动时,将需要滑动的距离传递到这,实现先于child滑动前处理
         //向下滑动时dy为负,反之为正
         //处理向上滑动
-        if (dy > 0 && mCurrentTargetOffsetTop > 0) {
-            mState = DRAGGING;
+        if (dy > 0 && mCurrentTargetOffsetTop > 0 && mState != RETURN_TO_HEIGHT && mState != RETURN_TO_TOP) {
             moveSpinner(-dy);
             consumed[1] = dy;   //通知nested child 已经消耗的距离
         }
@@ -210,8 +209,8 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
         int dy = dyUnconsumed + mParentOffsetInWindow[1];
 
         //处理向下的滑动
-        if (dy < 0 && !canChildScrollUp() && mCurrentTargetOffsetTop < maxDragDistance) {
-            mState = DRAGGING;
+        if (dy < 0 && !canChildScrollUp() && mCurrentTargetOffsetTop < maxDragDistance
+                && mState != RETURN_TO_HEIGHT && mState != RETURN_TO_TOP) {
             moveSpinner(-dy * DRAG_RATE);
         }
 
@@ -308,13 +307,16 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
             return;
         }
 
-        //TODO 自动下滑时不加阻力
+        Log.e(LOG_TAG, "moveSpinner mState = " + mState);
+
+        if (mState == NORMAL || mState == DRAGGING) {
+            mState = DRAGGING;
+        }
 
         if (offset < 0) {
             //修正需要上滑的距离,防止mTarget移到上方
             offset = Math.max(offset, -mCurrentTargetOffsetTop);
-        } else {
-            // 下拉的时候才添加阻力
+        } else if (mState == DRAGGING) {  // 下拉操作时候才添加阻力
             int targetY = mCurrentTargetOffsetTop + offset; //计算出当前需要的总的偏移量并设置
             // y表示阻力,x表示当前偏移量占可滑动总距离百分比,y = -x^2 + 2x
             float extraOS = targetY - totalDragDistance;
@@ -331,7 +333,6 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
             invalidate();   //初始状态head view是隐藏的,需要重绘一次才能显示
         }
 
-
         mCurrentTargetOffsetTop += offset;  //记录
 
         //只有拖拽时才执行动画
@@ -346,12 +347,13 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
     }
 
     /**
-     * 处理松手时间处理
+     * 处理松手事件
      */
     private void handleUp() {
+        Log.e(LOG_TAG, "handleUp mState = " + mState);
         if (mCurrentTargetOffsetTop == 0) {
             mState = NORMAL;    //设置为正常状态
-        } else if (mCurrentTargetOffsetTop >= totalDragDistance) {
+        } else if (mCurrentTargetOffsetTop >= totalDragDistance && mState == DRAGGING) {
             mState = RETURN_TO_HEIGHT;  //返回head view 处准备刷新
             autoScroll.scrollTo(totalDragDistance, HEIGHT_DURATION);
         } else if (mCurrentTargetOffsetTop > 0) {
@@ -453,7 +455,7 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
             } else if (mTarget.getTop() == 0) {
                 mState = NORMAL;    //进入复位状态
                 if (isHeadView()) {
-                    ((MHeadView)mHeadView).reset();
+                    ((MHeadView) mHeadView).reset();
                 }
                 Log.e(LOG_TAG, "进入复位状态");
             }
@@ -463,20 +465,23 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
 
     /**
      * 设置是否开始刷新动画
+     *
      * @param refreshing 是否需要刷新
      */
     public void setRefreshing(boolean refreshing) {
         if (refreshing && mState != REFRESHING) {
             mState = REFRESHING;    //进入刷新状态
             if (isHeadView()) {
-                ((MHeadView)mHeadView).refreshing();
+                ((MHeadView) mHeadView).refreshing();
             }
         } else if (!refreshing) {
             //取消刷新动画
-            if (isHeadView()) {
-                ((MHeadView)mHeadView).complete();
+            if (mState == REFRESHING) {
+                if (isHeadView()) {
+                    ((MHeadView) mHeadView).complete();
+                }
+                reset();
             }
-            reset();
         }
     }
 
@@ -484,8 +489,14 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
      * 复位控件
      */
     private void reset() {
-        mState = RETURN_TO_TOP; //返回顶部
-        autoScroll.scrollTo(0, TOP_DURATION);
+        //复位的情况
+        if (mTarget.getTop() == 0) {
+            mState = NORMAL;
+        } else {
+            mState = RETURN_TO_TOP; //返回顶部
+            autoScroll.scrollTo(0, TOP_DURATION);
+        }
+
     }
 
 
