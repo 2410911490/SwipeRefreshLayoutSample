@@ -43,75 +43,75 @@ public class MyHeaderView extends FrameLayout implements MHeadView{
         loadingIcon = findViewById(R.id.loadingIcon);
     }
 
-    @Override
-    public void reset() {
-        Log.e("MRefreshLayout", "MyHeaderView reset()");
-    }
-
-    @Override
-    public void pull() {
-        Log.e("MRefreshLayout", "pull()");
-    }
-
-    @Override
-    public void refreshing() {
-        Log.e("MRefreshLayout", "refreshing()");
-    }
-
-    @Override
-    public void onPositionChange(float currentTop, float offset, int state) {
-//        Log.e("MRefreshLayout", "onPositionChange(), currentTop = " + currentTop + ", offset = " + offset + ",state = " + state);
-    }
-
-    @Override
-    public void complete() {
-        Log.e("MRefreshLayout", "complete()");
-    }
-
 //    @Override
 //    public void reset() {
-//        textView.setText(getResources().getText(R.string.qq_header_reset));
-//        successIcon.setVisibility(INVISIBLE);
-//        arrowIcon.setVisibility(VISIBLE);
-//        arrowIcon.clearAnimation();
-//        loadingIcon.setVisibility(INVISIBLE);
-//        loadingIcon.clearAnimation();
+//        Log.e("MRefreshLayout", "MyHeaderView reset()");
 //    }
 //
 //    @Override
 //    public void pull() {
-//
+//        Log.e("MRefreshLayout", "pull()");
 //    }
 //
 //    @Override
 //    public void refreshing() {
-//        arrowIcon.setVisibility(INVISIBLE);
-//        loadingIcon.setVisibility(VISIBLE);
-//        textView.setText(getResources().getText(R.string.qq_header_refreshing));
-//        arrowIcon.clearAnimation();
-//        loadingIcon.startAnimation(rotate_infinite);
+//        Log.e("MRefreshLayout", "refreshing()");
 //    }
 //
 //    @Override
-//    public void onPositionChange(float currentPos, float offset, float refreshPos, boolean isTouch, int state) {
-//        // 往上拉
-//        if (currentPos < refreshPos && offset < 0) {
-//            textView.setText(getResources().getText(R.string.qq_header_pull));
-//            arrowIcon.clearAnimation();
-//            arrowIcon.startAnimation(rotate_down);
-//            // 往下拉
-//        } else if (currentPos > refreshPos && offset > 0) {
-//            textView.setText(getResources().getText(R.string.qq_header_pull_over));
-//            arrowIcon.clearAnimation();
-//            arrowIcon.startAnimation(rotate_up);
-//        }
+//    public void onPositionChange(float currentTop, float offset, int state) {
+////        Log.e("MRefreshLayout", "onPositionChange(), currentTop = " + currentTop + ", offset = " + offset + ",state = " + state);
 //    }
 //
 //    @Override
 //    public void complete() {
-//        loadingIcon.setVisibility(INVISIBLE);
-//        loadingIcon.clearAnimation();
-//        successIcon.setVisibility(VISIBLE);
-//        textView.setText(getResources().getText(R.string.qq_header_completed));
+//        Log.e("MRefreshLayout", "complete()");
 //    }
+
+    @Override
+    public void reset() {
+        textView.setText(getResources().getText(R.string.qq_header_reset));
+        successIcon.setVisibility(INVISIBLE);
+        arrowIcon.setVisibility(VISIBLE);
+        arrowIcon.clearAnimation();
+        loadingIcon.setVisibility(INVISIBLE);
+        loadingIcon.clearAnimation();
+    }
+
+    @Override
+    public void pull() {
+
+    }
+
+    @Override
+    public void refreshing() {
+        arrowIcon.setVisibility(INVISIBLE);
+        loadingIcon.setVisibility(VISIBLE);
+        textView.setText(getResources().getText(R.string.qq_header_refreshing));
+        arrowIcon.clearAnimation();
+        loadingIcon.startAnimation(rotate_infinite);
+    }
+
+    @Override
+    public void onPositionChange(float currentPos, float offset, int state) {
+        // 往上拉
+        if (offset < 0) {
+            textView.setText(getResources().getText(R.string.qq_header_pull));
+            arrowIcon.clearAnimation();
+            arrowIcon.startAnimation(rotate_down);
+            // 往下拉
+        } else if (offset > 0) {
+            textView.setText(getResources().getText(R.string.qq_header_pull_over));
+            arrowIcon.clearAnimation();
+            arrowIcon.startAnimation(rotate_up);
+        }
+    }
+
+    @Override
+    public void complete() {
+        loadingIcon.setVisibility(INVISIBLE);
+        loadingIcon.clearAnimation();
+        successIcon.setVisibility(VISIBLE);
+        textView.setText(getResources().getText(R.string.qq_header_completed));
+    }
 }

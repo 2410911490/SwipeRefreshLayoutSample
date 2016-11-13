@@ -57,6 +57,9 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
     private int totalDragDistance;  //能触发刷新的距离,为header高度
     private int maxDragDistance; //最大拖动距离
     private OnRefreshListener mListener;
+    private float lastY;
+    private boolean mIsBeingDragged;
+    private boolean mNestedScrollInProgress;    //标记是否由Nested 引起的滑动
 
 
     public MRefreshLayout(Context context) {
@@ -152,16 +155,14 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
 
         // ----- measure refreshView-----
         measureChild(mHeadView, widthMeasureSpec, heightMeasureSpec);
-        hasMeasureHeader = true;
-        headerHeight = mHeadView.getMeasuredHeight(); // header高度
-        totalDragDistance = headerHeight;   // 需要pull这个距离才进入松手刷新状态
-        if (maxDragDistance == 0) {  // 默认最大下拉距离为控件高度的五分之四
-            maxDragDistance = 2 * totalDragDistance;
+        if (!hasMeasureHeader) {    //防止重复测量
+            hasMeasureHeader = true;
+            headerHeight = mHeadView.getMeasuredHeight(); // header高度
+            totalDragDistance = headerHeight;   // 需要pull这个距离才进入松手刷新状态
+            if (maxDragDistance == 0) {  // 默认最大下拉距离为控件高度的五分之四
+                maxDragDistance = 2 * totalDragDistance;
+            }
         }
-
-        Log.e(LOG_TAG, "headerHeight = " + headerHeight);
-
-
     }
 
     //--------------------------NestedScrollingParent回调接口---------------------
@@ -183,6 +184,8 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
         startNestedScroll(nestedScrollAxes & ViewCompat.SCROLL_AXIS_VERTICAL);
 
         mCurrentTargetOffsetTop = mTarget.getTop(); //更新并修正与顶部的距离
+
+        mNestedScrollInProgress = true;
     }
 
     @Override
@@ -190,7 +193,7 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
         //child将要滑动时,将需要滑动的距离传递到这,实现先于child滑动前处理
         //向下滑动时dy为负,反之为正
         //处理向上滑动
-        if (dy > 0 && mCurrentTargetOffsetTop > 0 && mState != RETURN_TO_HEIGHT && mState != RETURN_TO_TOP) {
+        if (dy > 0 && mCurrentTargetOffsetTop > 0 && (mState == DRAGGING || mState == NORMAL)) {
             moveSpinner(-dy);
             consumed[1] = dy;   //通知nested child 已经消耗的距离
         }
@@ -210,10 +213,9 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
 
         //处理向下的滑动
         if (dy < 0 && !canChildScrollUp() && mCurrentTargetOffsetTop < maxDragDistance
-                && mState != RETURN_TO_HEIGHT && mState != RETURN_TO_TOP) {
+                && (mState == DRAGGING || mState == NORMAL)) {
             moveSpinner(-dy * DRAG_RATE);
         }
-
 
     }
 
@@ -235,6 +237,7 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
         //滑动停止时回调(松手后回调)
         Log.e(LOG_TAG, "onStop");
         mNestedScrollingParentHelper.onStopNestedScroll(target);
+        mNestedScrollInProgress = false;
         handleUp();
         // Dispatch up our nested parent
         stopNestedScroll();
@@ -296,6 +299,119 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
         return mNestedScrollingChildHelper.dispatchNestedPreFling(velocityX, velocityY);
     }
 
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent ev) {
+
+        ensureTarget();
+        if (!isEnabled() || mTarget == null || canChildScrollUp() || mNestedScrollInProgress) {
+            return false;
+        }
+
+        if (mState == REFRESHING) {
+            return true;
+        }
+
+        final int action = MotionEventCompat.getActionMasked(ev);
+        int pointerIndex;
+
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+                mActivePointerId = ev.getPointerId(0);
+                mIsBeingDragged = false;
+                pointerIndex = ev.findPointerIndex(mActivePointerId);
+                if (pointerIndex < 0) {
+                    return false;
+                }
+                lastY = ev.getY(pointerIndex);
+                return false;
+
+            case MotionEvent.ACTION_MOVE:
+                if (mActivePointerId == INVALID_POINTER) {
+                    Log.e(LOG_TAG, "Got ACTION_MOVE event but don't have an active pointer id.");
+                    return false;
+                }
+                pointerIndex = ev.findPointerIndex(mActivePointerId);
+                if (pointerIndex < 0) {
+                    return false;
+                }
+                mIsBeingDragged = true;
+                break;
+
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                mIsBeingDragged = false;
+                mActivePointerId = INVALID_POINTER;
+                break;
+
+        }
+        return mIsBeingDragged;
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent ev) {
+        final int action = MotionEventCompat.getActionMasked(ev);
+        int pointerIndex;
+
+        if (!isEnabled() || mState == RETURN_TO_HEIGHT || mState == RETURN_TO_TOP || canChildScrollUp()
+                || mState == REFRESHING || mNestedScrollInProgress) {
+            // Fail fast if we're not in a state where a swipe is possible
+            return false;
+        }
+
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+                mActivePointerId = ev.getPointerId(0);
+                mIsBeingDragged = false;
+                break;
+
+            case MotionEvent.ACTION_MOVE: {
+                pointerIndex = ev.findPointerIndex(mActivePointerId);
+                if (pointerIndex < 0) {
+                    Log.e(LOG_TAG, "Got ACTION_MOVE event but have an invalid active pointer id.");
+                    return false;
+                }
+                final float y = ev.getY(pointerIndex);
+                if (mState == DRAGGING || mState == NORMAL) {
+                    float overscrollTop = y - lastY;
+                    overscrollTop = overscrollTop > 0 ? overscrollTop * DRAG_RATE : overscrollTop;
+                    moveSpinner(overscrollTop);
+                    lastY = y;
+                }
+                break;
+            }
+            case MotionEventCompat.ACTION_POINTER_DOWN: {
+                pointerIndex = MotionEventCompat.getActionIndex(ev);
+                if (pointerIndex < 0) {
+                    Log.e(LOG_TAG,
+                            "Got ACTION_POINTER_DOWN event but have an invalid action index.");
+                    return false;
+                }
+                mActivePointerId = ev.getPointerId(pointerIndex);
+                break;
+            }
+
+            case MotionEventCompat.ACTION_POINTER_UP:
+                onSecondaryPointerUp(ev);
+                break;
+
+            case MotionEvent.ACTION_UP: {
+                pointerIndex = ev.findPointerIndex(mActivePointerId);
+                if (pointerIndex < 0) {
+                    Log.e(LOG_TAG, "Got ACTION_UP event but don't have an active pointer id.");
+                    return false;
+                }
+                lastY = 0;
+                handleUp();
+                mActivePointerId = INVALID_POINTER;
+                return false;
+            }
+            case MotionEvent.ACTION_CANCEL:
+                return false;
+        }
+
+        return true;
+    }
+
     /**
      * 滑动移动
      *
@@ -303,7 +419,7 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
      */
     private void moveSpinner(float dy) {
         int offset = Math.round(dy);
-        if (offset == 0) {
+        if (offset == 0 && Math.abs(offset) > mTouchSlop) {
             return;
         }
 
@@ -448,7 +564,12 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
         if (isForceFinish) {
             if (mTarget.getTop() == totalDragDistance) {
                 Log.e(LOG_TAG, "准备刷新");
-                setRefreshing(true);
+                if (mState != REFRESHING) {
+                    mState = REFRESHING;    //进入刷新状态
+                    if (isHeadView()) {
+                        ((MHeadView) mHeadView).refreshing();   //执行动画
+                    }
+                }
                 if (mListener != null) {
                     mListener.onRefresh();
                 }
@@ -469,34 +590,27 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
      * @param refreshing 是否需要刷新
      */
     public void setRefreshing(boolean refreshing) {
-        if (refreshing && mState != REFRESHING) {
-            mState = REFRESHING;    //进入刷新状态
+        if (refreshing && mState == NORMAL) {
+            autoScroll.scrollTo(totalDragDistance, HEIGHT_DURATION);
+        } else if (!refreshing && mState == REFRESHING) {
+            //停止刷新
             if (isHeadView()) {
-                ((MHeadView) mHeadView).refreshing();
+                ((MHeadView) mHeadView).complete();
             }
-        } else if (!refreshing) {
-            //取消刷新动画
-            if (mState == REFRESHING) {
-                if (isHeadView()) {
-                    ((MHeadView) mHeadView).complete();
-                }
-                reset();
-            }
+            reset();
         }
     }
 
     /**
-     * 复位控件
+     * 回滚控件
      */
     private void reset() {
-        //复位的情况
         if (mTarget.getTop() == 0) {
             mState = NORMAL;
-        } else {
+        } else if (mState != RETURN_TO_TOP) {
             mState = RETURN_TO_TOP; //返回顶部
             autoScroll.scrollTo(0, TOP_DURATION);
         }
-
     }
 
 
@@ -537,6 +651,5 @@ public class MRefreshLayout extends ViewGroup implements NestedScrollingParent, 
          */
         void onRefresh();
     }
-
 
 }
